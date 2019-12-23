@@ -1,0 +1,465 @@
+---
+title: "LAB1_AML"
+author: "Andreas C Charitos [andch552]"
+date: "9/18/2019"
+output: pdf_document
+always_allow_html: yes 
+header-includes: |
+  \usepackage{wrapfig}
+  \usepackage{lipsum}
+---
+
+\tableofcontents
+
+\newpage
+
+
+```{r,message=FALSE,echo=FALSE}
+# load libraries and data 
+library(bnlearn)
+library(Rgraphviz)
+library(visNetwork)
+library(igraph)
+library(gRain)
+library(knitr)
+library(dplyr)
+#library(kableExtra)
+data("asia")
+set.seed(123456789)
+```
+
+
+```{r,message=FALSE,echo=FALSE}
+
+# Assignment 1 ------------------------------------------------------------
+
+plot.network <- function(structure, ht = "400px",my_title){
+  # https://www.r-bloggers.com/bayesian-network-example-with-the-bnlearn-package/
+  nodes.uniq <- unique(c(structure$arcs[,1], structure$arcs[,2]))
+  nodes <- data.frame(id = nodes.uniq,
+                      label = nodes.uniq,
+                      color = "darkturquoise",
+                      shadow = TRUE)
+  
+  edges <- data.frame(from = structure$arcs[,1],
+                      to = structure$arcs[,2],
+                      arrows = "to",
+                      smooth = TRUE,
+                      shadow = TRUE,
+                      color = "black")
+  
+  return(visNetwork(nodes, edges, height = ht, width = "100%"
+                    ,background="#eeefff",main=my_title))
+}
+
+```
+
+
+
+```{r,echo=FALSE}
+restartGrid<-seq(1,10,1) ; scoreGrid<-c("loglik","aic","bic","bdla","bdj","bde","bds","mbde")
+max.iterGrid<-seq(1,10,1) ; rnd<-random.graph(nodes = colnames(asia))
+
+gridMatrix<-expand.grid(restartGrid,scoreGrid,max.iterGrid)
+colnames(gridMatrix)<-c("restart","score","max.iter")
+gridMatrix[,2]<-as.character(gridMatrix[,2])
+
+xs<-apply(gridMatrix,1,function(x){hc(asia,restart=as.numeric(x[1]),score=x[2],
+                             max.iter=as.numeric(x[3]),star=rnd)})
+xx<-lapply(xs,function(y){bnlearn::score(y,asia)})
+best_index=which.max(unlist(xx))
+
+best_combination<-gridMatrix[best_index,]
+```
+
+
+
+<!-- # ```{r, eval=TRUE,echo = FALSE, warning=FALSE, purl = FALSE, out.hight="100%", fig.pos = "h", fig.align = "center", fig.show="hold", fig.cap = "\\textit{Ploted data as a time series plot.}", out.extra='angle= 0', message=FALSE,out.mode="inline"} -->
+<!-- # png(filename="images/BF_Plot.png", width = 750, height = 500) -->
+<!-- # plot.network(xs[[best_index]],my_title = "Network with brute force")%>%visExport(type="png") -->
+<!-- # dev.off() -->
+<!-- # ``` -->
+
+
+<!-- \begin{wrapfigure}{r}{0.5\textwidth} -->
+<!-- \centering -->
+<!-- \includegraphics[width=0.5\textwidth]{~/Courses/Advanced ML/Labs/Lab1/BruteForce_Plot} -->
+<!-- \vspace{-20pt} -->
+<!-- \caption{Network with BF} -->
+<!-- We are going to use grid search in order to find the best parameters for the DAG . -->
+<!-- \vspace{80pt} -->
+<!-- \end{wrapfigure} -->
+
+<!-- ![Network with brute force]("~/Courses/Advanced ML/Labs/Lab1/BruteForce_Plot"){#id1 .class width=50% height=50%} -->
+
+# Assignment 1
+
+In this part we are going to use grid search in order to find the best parameters for giving the best DAG structure.
+The search is not going to be exhausive (we are testing small grids) and we are using 
+
+* $$grid~for~restart~(from=1,to=10,by=1)$$
+* $$grid~for~score~("loglik","aic","bic","bdla","bdj","bde","bds","mbde")$$ 
+* $$grid~for~max.iter~(from=1,to=10,by=1)$$ 
+* $$and~initial ~random.graph$$
+
+The plot above shows the graph that learned with the best parameters returned from the grid search.
+
+\vspace{20pt}
+ 
+Plot of the Brute Force Network
+-------------------------------
+
+```{r, eval=TRUE,echo=FALSE, warning=FALSE,out.width="300px", fig.pos="h",fig.align="center", fig.cap="\\textit{Network with brute force.}", message=FALSE}
+knitr::include_graphics(c("~/Courses/Advanced ML/Labs/Lab1/BruteForce_Plot.png"))
+```
+
+
+
+Best combination output and modelstring
+---------------------------------------
+
+The best combination from the grid search is shown in the table below.
+
+```{r, eval=TRUE,echo = FALSE, warning=FALSE, message=FALSE,fig.align="center"}
+
+knitr::kable(best_combination)
+ 
+```
+ 
+ Here we can see the string of the model that we get using the brute force method.
+
+```{r,echo=F}
+
+modelstr<-modelstring(xs[[best_index]])
+
+```
+
+The string model is : `r modelstr`
+
+# Assignment 2
+
+In this part using the network structed learned in the previous part we are fitting the 80% of the asia dataset as train data and the remaining 20% as test data in order to make predictions for the node $S("yes","no")$ which is the variable Smoking in the asia dataset
+
+
+```{r,echo=FALSE}
+
+# Assignment 2 ------------------------------------------------------------
+
+## 80% of the sample size
+smp_size <- floor(0.80 * nrow(asia))
+
+asia_character<-data.frame(lapply(asia, as.character), 
+                           stringsAsFactors=FALSE) # create a df only for to use in the setEvidence function
+
+indx <- sample(nrow(asia), size = smp_size)
+
+
+asia_test<-asia_character[-indx,] # use this only for the states arg in setEvidence
+
+train_data <- asia[indx, ]
+test_data <- asia[-indx, ]
+
+dag.fit<-hc(train_data,restart = 5,score="bde",max.iter = 10) # learn structure
+
+bn.model<-bn.fit(dag.fit,data=train_data,method = "mle") # fit the model-learn the parameters 
+
+bn.model.grain<-compile(as.grain(bn.model)) # compile as grain object
+
+```
+
+
+Plot of the Conditionals Tables
+-------------------------------
+The plot above gives the conditionals tables for all the nodes in the Graph.
+
+```{r,echo=FALSE}
+col.param=length(colnames(asia))/2
+
+par(mfrow=c(2,col.param))
+for(i in 1:length(bn.model)){
+  obj<-bn.model[[i]]$prob
+  if(names(bn.model)[i]%in%c("A","S","T")){
+  barplot(obj,col=sample(colors()),density=60,
+       main=paste("Conditional for",names(bn.model)[i]))
+  }else{
+    plot(obj,col=sample(colors()),
+         main=paste("Conditional for",names(bn.model)[i]))
+    }
+  ""
+}
+```
+
+
+
+```{r,echo=F}
+prediction_func<-function(fit.dag,train_data,test_data,method,index,node){
+  fit.model<-bn.fit(fit.dag,data=train_data,method = method) # fit the model-learn the parameters 
+  
+  fit.model.grain<-compile(as.grain(fit.model))
+  
+  pred_vector<-double(dim(test_data)[1])
+  
+  for(i in 1:dim(test_data)[1]){
+    evidence.obj<-setEvidence(fit.model.grain,nodes=colnames(test_data[-index])
+                           ,states=asia_test[i,-index])
+    query.obj<-querygrain(evidence.obj,nodes=node,type="marginal")
+    pred_vector[i]<-ifelse(query.obj[[1]][1]>query.obj[[1]][2],"no","yes")
+  }
+  return(pred_vector)
+}
+```
+
+
+```{r,echo=F}
+pred_bf<-prediction_func(dag.fit,train_data,test_data,"mle", 2,"S")
+
+tab_bf<-prop.table(table(test_data[,2],pred_bf,
+                         dnn=c("true", "prediction")))
+#cat("The confusion matrix for the brute force model is :\n")
+#tab_bf
+
+```
+
+The confusion matrix for the brute force model is :
+
+```{r,echo=F}
+tab_bf
+```
+
+
+Confusion Matrix Plot for Brute Force Network
+---------------------------------------------
+The plot above shows the confusion matrix for the BF  
+
+```{r,echo=FALSE,fig.width=3, fig.height=3,fig.align="center"}
+fourfoldplot(tab_bf, color = c(sample(colours(),1), sample(colours(),1)),
+             conf.level = 0, margin = 1, main = "Confusion Matrix")
+
+```
+
+```{r,echo=FALSE}
+accuracy_bf<-sum(pred_bf==test_data[,2])/dim(test_data)[1]
+#cat("The accuracy of brute force model is:",accuracy_bf*100,"%")
+```
+
+
+The accuracy of brute force model is: `r accuracy_bf`
+
+Comparison with True model
+--------------------------
+We continue the analysis where we compare the model that we have with the true model $("[A][S][T|A][L|S][B|S][D|B:E][E|T:L][X|E]")$
+
+The plot of network of the true model is given below. 
+
+```{r,echo=FALSE}
+dag.true = model2network("[A][S][T|A][L|S][B|S][D|B:E][E|T:L][X|E]")
+
+```
+
+
+```{r, eval=TRUE,echo=FALSE, warning=FALSE,out.width="300px", fig.pos="h",fig.align="center", fig.cap="\\textit{Network with true model.}", message=FALSE}
+knitr::include_graphics(c("~/Courses/Advanced ML/Labs/Lab1/TrueNetwork_Plot.png"))
+```
+
+
+<!-- ![Network true structure]("~/Courses/Advanced ML/Labs/Lab1/TrueNetwork_Plot"){#id2 .class width=70% height=70% } -->
+
+
+```{r,echo=FALSE}
+
+pred_true<-prediction_func(dag.true,train_data,test_data,"mle", 2,"S")
+
+tab_true<-prop.table(table(test_data[,2],pred_true,
+                         dnn=c("true", "prediction")))
+#cat("The confusion matrix for the brute force model is :\n")
+#tab_true
+
+```
+
+\vspace{50pt}
+
+The confusion matrix for the true model is :
+
+```{r,echo=FALSE}
+tab_true
+```
+
+
+Confusion Matrix Plot for True Network
+--------------------------------------
+The confusion matrix plot for the true model is shown below.
+
+```{r,echo=FALSE,fig.width=3, fig.height=3,fig.align="center"}
+fourfoldplot(tab_true, color = c(sample(colours(),1), sample(colours(),1)),
+             conf.level = 0, margin = 1, main = "Confusion Matrix")
+
+```
+
+
+```{r,echo=FALSE}
+accuracy_true<-sum(pred_true==test_data[,2])/dim(test_data)[1]
+#cat("The accuracy of true model is:",accuracy_true*100,"%")
+
+```
+
+The accuracy of true model is: `r accuracy_true`
+
+
+# Assignment 3
+
+In this part we are going to use the Markov Blankets of the S node to make the predictions.
+In statistics and machine learning, the Markov blanket for a node in a graphical model contains all the variables that shield the node from the rest of the network. This means that the Markov blanket of a node is the only knowledge needed to predict the behavior of that node and its children. 
+`source Wikepedia`  [`[link]`](https://en.wikipedia.org/wiki/Markov_blanket)
+
+
+```{r,echo=FALSE}
+
+# Assignment 3 ------------------------------------------------------------
+mv.blanket<-bnlearn::mb(dag.fit,"S") # markov blancket for S
+
+indexes<-c()
+for(obj in mv.blanket){
+  ind<-which(obj==colnames(test_data))
+  indexes<-c(indexes,ind)
+}  
+r<-seq(1:8) ; indexes<-r[-indexes]
+
+# ----------------------------------------------------------
+pred_mb<-prediction_func(dag.fit,train_data,test_data,"mle", indexes,"S")
+
+tab_mb<-prop.table(table(test_data[,2],pred_mb,
+                         dnn=c("true", "prediction")))
+#cat("The confusion matrix for the markov blancket model is :\n")
+#tab_mb
+
+
+```
+
+The confusion matrix for the markov blanket model is :
+
+```{r,echo=FALSE}
+tab_mb
+```
+
+
+Confusion Matrix Plot for Markov Blancket
+-----------------------------------------
+The confusion matrix plot for the Markov Blanket is shown below.
+
+```{r,echo=FALSE,fig.width=3, fig.height=3,fig.align="center"}
+fourfoldplot(tab_mb, color = c(sample(colours(),1), sample(colours(),1)),
+             conf.level = 0, margin = 1, main = "Confusion Matrix")
+
+```
+
+
+```{r,echo=FALSE}
+accuracy_mb<-sum(pred_mb==test_data[,2])/dim(test_data)[1]
+#cat("The accuracy of markov blancket model is:",accuracy_mb*100,"%")
+
+```
+
+The accuracy of narkov blanket model is: `r accuracy_mb`
+
+# Assignment 4
+
+Finally,we are testing a Naive Bayes model for the node S.
+In machine learning, naïve Bayes classifiers are a family of simple "probabilistic classifiers" based on applying Bayes' theorem with strong (naïve) independence assumptions between the features.
+`source Wikepedia`  [`[link]`](https://en.wikipedia.org/wiki/Naive_Bayes_classifier)
+
+The plot of Naive Bayes network is shown below 
+
+```{r,echo=FALSE}
+# Assignment 4 ------------------------------------------------------------
+string<-""
+for(i in 1:length(colnames(asia))){
+  if(colnames(asia)[i]!="S"){
+    str2<-paste("[",colnames(asia)[i],"|S]",sep="")
+  }else{
+    str2<-"[S]"
+  }
+  string<-paste(string,str2,sep="")
+}
+
+naive.dag<- model2network(string)
+
+```
+
+
+```{r, eval=TRUE,echo=FALSE, warning=FALSE,out.width="300px", fig.pos="h",fig.align="center", fig.cap="\\textit{Network with Naive Bayes.}", message=FALSE}
+knitr::include_graphics(c("~/Courses/Advanced ML/Labs/Lab1/NaiveBayes_Plot.png"))
+```
+
+<!-- ![Network with naive bayes]("~/Courses/Advanced ML/Labs/Lab1/NaiveBayes_Plot"){#id3 .class width=50% height=50%} -->
+
+
+```{r,echo=FALSE}
+
+pred_naive<-prediction_func(naive.dag,train_data,test_data,"mle", 2,"S")
+
+tab_naive<-prop.table(table(test_data[,2],pred_naive,
+                         dnn=c("true", "prediction")))
+
+# cat("The confusion matrix for the naive bayes model is :\n")
+# tab_naive
+
+```
+
+\vspace{50pt}
+
+The confusion matrix for the naive bayes model is :
+
+```{r,echo=FALSE}
+tab_naive
+```
+
+
+
+Confusion Matrix Plot for Naive Bayes Network
+---------------------------------------------
+The plot of the confusion matrix is shown below.
+
+```{r,echo=FALSE,fig.width=3, fig.height=3,fig.align="center"}
+fourfoldplot(tab_naive, color = c(sample(colours(),1), sample(colours(),1)),
+             conf.level = 0, margin = 1, main = "Confusion Matrix")
+
+```
+
+
+```{r,echo=FALSE}
+accuracy_naive<-sum(pred_naive==test_data[,2])/dim(test_data)[1]
+#cat("The accuracy of the naive bayes model is:",accuracy_naive*100,"%")
+
+```
+The accuracy of brute force model is: `r accuracy_naive`
+
+Summary Table with accuracies
+-----------------------------
+
+```{r,echo=F}
+accuracy_df<-rbind(accuracy_bf,accuracy_true,accuracy_mb,accuracy_naive)
+accuracy_df<-as.data.frame(accuracy_df)
+rownames(accuracy_df)<-c("BF-model","True-model","MB-model","Naive-model")
+colnames(accuracy_df)<-"Accuracy"
+
+```
+
+```{r, eval=TRUE,echo = FALSE, warning=FALSE, purl = FALSE, out.hight="100%", fig.pos = "h", fig.align = "center", fig.cap = "\\textit{Accuracy Table.}", out.extra='angle= 0', message=FALSE}
+
+kable(accuracy_df, digits = 2)
+
+```
+
+# Conclusion
+In conclusion the Brute Force model although it had different structure that the true has able to achive similar accuracy with the true model.
+The Markov Blanket model had the same accuracy with the brute force as expected because according to the definition of the Markov Blanket instead of using all the paremeters as with the Brute force inference using the Markov Blankets we use only the parameters that the node is dependent.
+The Naive Bayes model finally achieved a slightly worse accuracy than the previous models and again this can be explained by the definition of Naive Bayes that assumes cross-independence for all the other nodes. 
+ 
+
+\newpage
+
+```{r child="~/Courses/Advanced ML/Labs/Lab1/apendix.Rmd"}
+
+```
+
+  

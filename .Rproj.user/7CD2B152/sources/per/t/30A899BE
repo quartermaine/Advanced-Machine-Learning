@@ -1,0 +1,25 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1569016522544.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "3158973227",
+    "id" : "30A899BE",
+    "lastKnownWriteTime" : 1569016454,
+    "last_content_update" : 1569016454,
+    "path" : "~/Courses/Advanced ML/Labs/Lab1/Lab1_AML.Rmd",
+    "project_path" : "Lab1/Lab1_AML.Rmd",
+    "properties" : {
+        "cursorPosition" : "15,0",
+        "scrollLine" : "0"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_markdown"
+}

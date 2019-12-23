@@ -1,0 +1,7 @@
+# Appendix
+
+## Code used for Lab
+
+```{r, class.source = c("numCode", "R", "numberLines"), code = readLines('~/Courses/Advanced ML/Labs/Lab2/LAB2_AML_code.R'), comment = NA, echo=TRUE, eval=FALSE, tidy=TRUE, tidy.opts = list(blank = FALSE, width.cutoff = 55)}
+```
+

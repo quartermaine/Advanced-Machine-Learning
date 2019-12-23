@@ -1,0 +1,13 @@
+#Dump 1
+
+```{r d1, code = readLines(knitr::purl(input = "01.Rmd", output = "knitr/01.R", documentation = 0)), eval = FALSE, tidy=TRUE, tidy.opts = list(blank = FALSE, width.cutoff = 55)}
+```
+#Dump 2
+
+```{r d2, code = readLines(knitr::purl(input = "02.Rmd", output = "knitr/02.R", documentation = 0)), eval = FALSE, tidy=TRUE, tidy.opts = list(blank = FALSE, width.cutoff = 55)}
+```
+
+#Dump 3
+
+```{r d2, code = readLines(knitr::purl(input = "03.Rmd", output = "knitr/03.R", documentation = 0)), eval = FALSE, tidy=TRUE, tidy.opts = list(blank = FALSE, width.cutoff = 55)}
+```

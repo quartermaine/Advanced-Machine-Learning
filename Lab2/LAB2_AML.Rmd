@@ -1,0 +1,395 @@
+---
+title: "LAB2_AML"
+author: "Andreas C Charitos [andch552]"
+date: "9/29/2019"
+output:
+  pdf_document: default
+header-includes: |
+ \usepackage{booktabs}
+---
+
+\tableofcontents
+
+\newpage
+
+# Assignment 1
+
+```{r global_options, R.options=knitr::opts_chunk$set(warning=FALSE, message=FALSE,echo=F,knitr.table.format = "latex")}
+```
+
+
+
+```{r}
+# Libraries ---------------------------------------------------------------
+
+library(HMM)
+library(seqHMM) #another library for HMMs
+library(diagram)
+library(entropy)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+# -------------------------------------------------------------------------
+
+```
+We are asked to model the behavior of a robot that walks around a ring. The ring is divided into 10 sectors. At any given time point, the robot is in one of the sectors and decides with equal probability to stay in that sector or move to the next sector. You do not have direct observation of the robot. However, the robot is equipped with a tracking device that you can access. The device is not very accurate though: If the robot is in the sector i, then the device will report that the robot is in the sectors [i-2,i+2] with equal probability.
+Start by defining the model which requires the following components :
+
+* The hidden states $z_t$
+* The observed states $x_t$
+* The transition matrix with the probabilities for the hidden states
+* The emission matrix with the probabilities for the observed states
+
+```{r}
+# Question 1 --------------------------------------------------------------
+
+names=1:10
+States = c() # initialize the hidden states z
+for(i in 1:10){
+  States=c(States,paste("State_",names[i],sep=""))
+}
+
+Symbols = letters[1:10] # initialie the observed states 
+# transmission matrix
+transProbs = matrix(0,10,10) # transmisison matrix-hidden
+diag(transProbs) = 0.5
+diag(transProbs[,-1]) = 0.5 ; transProbs[10,1]=0.5
+emissionProbs = toeplitz(c(0.2,0.2,0.2,rep(0,5),0.2,0.2)) # emission matrix-observable
+# print transition probabilities
+TP=as.data.frame(transProbs) ; colnames(TP)=States 
+# print emission probabilities
+EP=as.data.frame(emissionProbs) ; colnames(EP)=Symbols 
+# initialize HMM 
+hmm = initHMM(States, Symbols, 
+              transProbs = transProbs, emissionProbs = emissionProbs)
+# -------------------------------------------------------------------------
+cat("The states are : \n",States,
+    "\nThe observed states are :\n",Symbols)
+
+```
+
+Next we report the Transition and emission matrices
+
+-----
+## Transition Matrix
+```{r}
+kable(TP)%>%
+  kable_styling(font_size = 7)
+```
+
+## Emission Matrix
+```{r}
+kable(EP)%>%
+  kable_styling(font_size = 7)
+```
+
+
+## Plot of Transmission and Emission Matrix
+
+```{r, fig.width=9,fig.height=4,fig.align="center",out.width = '100%'}
+# using the diagram package 
+par(mfrow=c(1,2))
+plotmat(transProbs,box.size = 0.05,box.col = "lightyellow",
+        arr.length = 0.4,main="Transition - Matrix") # plot the transition-matrix 
+plotmat(emissionProbs,box.size = 0.05,box.col = "lightyellow",
+        arr.length = 0.4,main="Emission - Matrix") # plot the emission-matrix 
+```
+
+# Assignment 2
+Next we simulate from the defined model 100 timesteps 
+```{r}
+# Question 2 --------------------------------------------------------------
+
+nSim=100
+sim = simHMM(hmm, nSim) # simulate 100 timesteps
+
+# -------------------------------------------------------------------------
+```
+
+
+# Assignment 3
+We then discard the hidden states from the sample obtained above.And use the remaining observations to compute the filtered and smoothed probability distributions for each of the 100 time points.We compute also the most probable path.
+
+```{r}
+# Question 3 --------------------------------------------------------------
+
+sim.obs=sim$observation # discard the hidden states 
+# filter 
+f = forward(hmm, sim.obs)
+f_tab= prop.table(exp(f),2)  # marginalize over the columns so thats why we have 2 to prop table
+# smooth
+b = backward(hmm, sim.obs)
+#b_tab=prop.table(exp(b),2) 
+smooth_= posterior(hmm,sim.obs) # or we can use the prop.table(exp(f)*exp(b),2)
+# viterbi algorithm for most probable path
+vit = viterbi(hmm, sim.obs) 
+# -------------------------------------------------------------------------
+
+```
+
+
+# Assignment 4
+Now we calculate the accuracy for the filter,smooth and most probable path .
+
+## Table with the Accuracies from simulation 
+
+```{r}
+# Question 4 --------------------------------------------------------------
+
+# compute accuracy for filter
+t.index=apply(f_tab,2,which.max) # marginalize over the columns 
+t=sapply(t.index,function(y){States[y]})
+# accuracy for filter
+ac1=sum(t==sim$states)/length(sim$states)
+# compute accuracy for smooth
+t1.index=apply(smooth_,2,which.max)
+t1=sapply(t1.index,function(y){States[y]})
+# accuracy for smooth
+ac2=sum(t1==sim$states)/length(sim$states)
+# compute accuracy for viterbi
+ac3=sum(vit==sim$states)/length(sim$states)
+# build a summaryaccuracy table 
+accuracy_tab=cbind(ac1,ac2,ac3) 
+colnames(accuracy_tab)=c("Filter","Smooth","Viterbi")
+rownames(accuracy_tab)="Accuracy"
+# accuracy_tab
+# 
+kable(as.data.frame(accuracy_tab))%>%
+  kable_styling(font_size = 9) # table with the accuracies 
+
+# -------------------------------------------------------------------------
+
+```
+We observe that the accuracy of the smooth is better that filter and viterbi.The reasoning behind this is in the way the filtering and smoothing are calculated :
+
+* Filtering : $p(Z^t|x^{0;t}=\frac{\alpha(Z^t)}{\sum_zt\alpha(z^t)})$
+* Smoothing : $p(Z^t|x^{0:T}=\frac{\alpha(Z^t)\beta(Z^t)}{\sum_z \alpha(z^t)\beta(z^t)})$
+
+The filter is calculating the probability of state given the observations up to this timestep while smooth is calculating the state given all the previous observations.
+
+# Assignment 5
+Here we simulate 100 different simulated samples with 100 timesteps.The puspose of this procedure is to see if the that the smoothed distribution should be more accurate than the filtered distributions.
+
+```{r}
+# Question 5 --------------------------------------------------------------
+# accuracyfunction
+accuracy_func=function(user_hmm,number_sim){
+  # --function that returns the filter ,smooth,viterbi accuracy for a hmm , and number of time steps --
+  simHMM = simHMM(user_hmm,number_sim)
+  sim_hmm_obs=simHMM$observation # discard the hidden states 
+  # filter 
+  forward_pass = forward(user_hmm, sim_hmm_obs)
+  forward_table= prop.table(exp(forward_pass),2)  # marginalize over the columns so thats why we have 2 to prop table
+  # smooth
+  back_pass = backward(user_hmm, sim_hmm_obs)
+  # back_table=prop.table(exp(back_pass),2)
+  smooth_= posterior(user_hmm,sim_hmm_obs)  # or we can use the prop.table(exp(forward_pass)*exp(back_pass),2)
+  # viterbi algorithm for most probable path
+  viterbi_res = viterbi(user_hmm, sim_hmm_obs)
+  
+  # compute accuracy for filter
+  t.index=apply(forward_table,2,which.max) # marginalize over the columns 
+  t=sapply(t.index,function(y){user_hmm$`States`[y]})
+  # accuracy for filter
+  filter_accuracy=sum(t==simHMM$states) / length(simHMM$states)
+  # compute accuracy for smooth
+  t1.index=apply(smooth_,2,which.max)
+  t1=sapply(t1.index,function(y){user_hmm$`States`[y]})
+  # accuracy for smooth
+  smooth_accuracy=sum(t1==simHMM$states) / length(simHMM$states)
+  # compute accuracy for viterbi
+  viterbi_accuracy=sum(viterbi_res==simHMM$states) / length(simHMM$states)
+  # compute entropy for filter
+  filter_entropy=apply(forward_table, 2, FUN = entropy.empirical)
+  smooth_entropy=apply(smooth_,2,FUN=entropy.empirical)
+  
+  return(list(simHMM,accuracies=
+                c(filter_accuracy,smooth_accuracy,viterbi_accuracy),
+              entropy=list(filt_ent=filter_entropy,smooth_ent=smooth_entropy)))
+}
+
+```
+
+## Table with the accuracies for diffrent simulations
+
+```{r}
+# replicate the results from accuracy function 10 times with 100 timespters every time
+nreps=100
+rep_res=replicate(nreps,accuracy_func(hmm,100))
+# create a matrix with the results from the rep_res --the second row of rep_res
+results_mat=matrix(unlist(rep_res[2,]), nrow=3,ncol = nreps, byrow = F)
+# colnames-rownames
+colnames(results_mat)=paste("replicate n=",1:nreps)
+rownames(results_mat)=c("filter_accuracy","smooth_accuracy",
+                    "viterbi_accuracy")
+```
+
+
+```{r,results='asis',fig.width=3,out.width='150%',fig.height=30}
+# # results_mat
+# kable(as.data.frame(results_mat))
+
+t1 <- kable(as.data.frame(results_mat[,1:10]), format = "latex", booktabs = TRUE)%>%
+  kable_styling(latex_options = "scale_down")
+t2 <- kable(as.data.frame(results_mat[,11:20]), format = "latex", booktabs = TRUE)%>%
+kable_styling(latex_options = "scale_down")
+t3<-kable(as.data.frame(results_mat[,21:30]), format = "latex", booktabs = TRUE)%>%
+kable_styling(latex_options = "scale_down")
+t4<-kable(as.data.frame(results_mat[,31:40]), format = "latex", booktabs = TRUE)%>%
+kable_styling(latex_options = "scale_down")
+t5<-kable(as.data.frame(results_mat[,41:50]), format = "latex", booktabs = TRUE)%>%
+kable_styling(latex_options = "scale_down")
+t6<-kable(as.data.frame(results_mat[,51:60]), format = "latex", booktabs = TRUE)%>%
+kable_styling(latex_options = "scale_down")
+t7<-kable(as.data.frame(results_mat[,61:70]), format = "latex", booktabs = TRUE)%>%
+kable_styling(latex_options = "scale_down")
+t8<-kable(as.data.frame(results_mat[,71:80]), format = "latex", booktabs = TRUE)%>%
+kable_styling(latex_options = "scale_down")
+t9<-kable(as.data.frame(results_mat[,81:90]), format = "latex", booktabs = TRUE)%>%
+kable_styling(latex_options = "scale_down")
+t10<-kable(as.data.frame(results_mat[,91:100]), format = "latex", booktabs = TRUE)%>%
+kable_styling(latex_options = "scale_down")
+
+t1 ; t2 ; t3 ; t4 ; t5 ; t6 ; t7 ; t8 ; t9 ; t10
+
+```
+
+
+## Plot of Accuracies for diffrent simulations
+
+```{r,fig.width=5, fig.height=4,fig.align="center",out.width = '50%'}
+# plot of the accuracies 
+cols=c("gray30","mediumorchid","chartreuse" )
+plot(1:nreps,results_mat[2,],type="l",ylim=c(0,0.9),col=cols[1],lwd=2,
+     main=paste("Smooth~Filter~Viterbi for\n ",nreps," replications for 100 timesteps "),
+     panel.first = grid(25,25),ylab = "Accuracy",xlab="replications")
+lines(1:nreps,results_mat[1,],col=cols[2],lwd=2)
+lines(1:nreps,results_mat[3,],col=cols[3],lwd=2)
+legend("bottomleft",legend = c("Smooth","Filter","Viterbi"),
+       col = cols,lty=1,lwd=2)
+
+# -------------------------------------------------------------------------
+
+```
+As we can see in general the performance of the smooth is better than filter and viterbi.
+
+# Assignment 6
+Next,we generate samples with diffrent sizes in order to investigate the claim that having more timesteps we can find better where the robot is.We report the table of the accuracies and the entropy for some samples.
+
+## Table with  the accuracies for diffrent sample sizes
+
+```{r, results='asis'}
+# Question 6 --------------------------------------------------------------
+
+sample_grid=seq(10,300,5) # generate grid of timesteps
+# apply the accuracy funciton to the grid 
+accuracy_mat=sapply(sample_grid,function(y){accuracy_func(hmm,y)})
+# create a matrix with the results from the accuracy_mat --the second row of raccuracy_mat
+res_acc_mat=matrix(unlist(accuracy_mat[2,]), nrow=3,ncol = length(sample_grid), byrow = F)
+# row-column names
+colnames(res_acc_mat)=paste("nSample=",sample_grid)
+rownames(res_acc_mat)=c("filter_accuracy","smooth_accuracy","viterbi_accuracy")
+#  print the matrix
+# res_acc_mat
+# construct a table 
+# knitr::kable(data.frame(res_acc_mat)) # 
+
+```
+
+```{r,caption="Table-Accuracies"}
+t11 <- kable(as.data.frame(res_acc_mat[,1:10]), format = "latex", booktabs = TRUE)%>%
+  kable_styling(latex_options = "scale_down")
+t12 <- kable(as.data.frame(res_acc_mat[,11:20]), format = "latex", booktabs = TRUE)%>%
+kable_styling(latex_options = "scale_down")
+t13<-kable(as.data.frame(res_acc_mat[,21:30]), format = "latex", booktabs = TRUE)%>%
+kable_styling(latex_options = "scale_down")
+t14<-kable(as.data.frame(res_acc_mat[,31:40]), format = "latex", booktabs = TRUE)%>%
+kable_styling(latex_options = "scale_down")
+t15<-kable(as.data.frame(res_acc_mat[,41:50]), format = "latex", booktabs = TRUE)%>%
+kable_styling(latex_options = "scale_down")
+t16<-kable(as.data.frame(res_acc_mat[,51:59]), format = "latex", booktabs = TRUE)%>%
+kable_styling(latex_options = "scale_down")
+
+t11 ; t12 ; t13 ; t14 ; t15 ; t16 
+```
+
+
+## Plot of the Accuracies for diffrent samples 
+
+```{r,fig.width=5, fig.height=4,fig.align="center",out.width = '50%'}
+# plot of the accuracies 
+cols1=c("grey73","deeppink2","peachpuff4")
+plot(sample_grid,res_acc_mat[2,],type="l",ylim=c(0,0.9),col=cols1[1],lwd=2,
+     main=paste("Smooth~Filter~Viterbi Accuracy \nfor n=",sample_grid[1],":",rev(sample_grid)[1]),
+     panel.first = grid(25,25),ylab = "Accuracy")
+lines(sample_grid,res_acc_mat[1,],col=cols1[2],lwd=2)
+lines(sample_grid,res_acc_mat[3,],col=cols1[3],lwd=2)
+legend(x=10,y=0.18,legend = c("Smooth","Filter","Viterbi"),
+       col = cols1,lty=1,lwd=2,cex=0.7)
+
+```
+
+## Plot of the Entropies for different samples
+
+```{r}
+sample_indx<-sample(1:50,9) # ; sample_indx
+my_cols=c("coral4","blue4","limegreen","mediumorchid","orange2","seagreen4","snow4","yellow3","plum")
+par(mfrow=c(3,3))
+for(i in sample_indx){
+plot(accuracy_mat[,i]$entropy$filt_ent,type="l",col=my_cols[which(sample_indx==i)],pch=20,
+     ylab = "Entropy",xlab="nSample",panel.first = grid(25,25),
+     main=paste("Entropy for nSampe=", sample_grid[i]," \nfor 10 timesteps"))
+}
+# -------------------------------------------------------------------------
+```
+
+## Plot of Entropies for Filter and Smoothed 
+
+```{r,fig.width=5, fig.height=4,fig.align="center",out.width = '50%'}
+# take a sample with 100 timesteps from 4
+samp1=rep_res[,60]
+
+plot(samp1$entropy$filt_ent,main = "Entropy filtered and smoothed",
+     type = "l", col = "mediumspringgreen",
+     ylab = "Entropy", ylim = c(0,2),panel.first = grid(25,25))
+lines(samp1$entropy$smooth_ent, col = "mediumorchid1")
+legend(x = "topright", lty=1,legend = c("Smoothed","Filtered"),
+       col = c("mediumspringgreen","mediumorchid1"))
+```
+
+So at first we ploted the entropies for different timesteps and then for a sampled simulation with 100 timesteps.
+As we can see there is no evidence that supports the claim that having more samples helps up to predict the state of the robot better.
+
+
+# Assignment 7
+Finally,we take a random sample from the 100th timestep samples we created in Assignment 5 and calculate the probabilities in the 101 timestep for the hidden states.
+
+```{r,fig.align="center"}
+# Question 7 --------------------------------------------------------------
+# take a random sample from the Assignment 5 with 100 timesteps
+rndSample=rep_res[1,sample(1:dim(rep_res)[2],1)]
+# calsutate the posterior
+post=posterior(hmm,rndSample[[1]]$observation)
+# calculate the probabilities at 101 timestep
+prob_step101=transProbs%*%post[,100]
+# create a df 
+df=data.frame(prob_step101) ; rownames(df)=States
+# plot the probabilities 
+kable(df)%>%kable_styling(font_size = 9)
+
+# -------------------------------------------------------------------------
+
+```
+
+# Conclusion 
+In conclusion we can see that on general the smooth will report better accuracy compared with the 2 other methods and the number of the samples does not provide any more information that can help us identify the robot possition better.
+
+\newpage
+
+```{r child="~/Courses/Advanced ML/Labs/Lab2/appendix.Rmd"}
+```
+
+
+
+
